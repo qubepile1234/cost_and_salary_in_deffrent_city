@@ -1,0 +1,2 @@
+# cost_and_salary_in_deffrent_city
+爬虫练习，根据某工作网站编写，目标在于爬取生活成本与薪资，找到适合生活的地方
