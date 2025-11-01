@@ -9,25 +9,6 @@ import time
 from xlutils.copy import copy as xl_copy
 
 
-def main():
-    while True:
-        try:
-            # 目标网站URL - 东京都中央区的求人信息
-            num=input("请输入要爬取的页数（每页约20条职位信息）：")
-            print("开始爬取求人ボックス - itの仕事メッセージページ=..."+num)
-            baseurl="https://xn--pckua2a7gp15o89zb.com/it%E3%81%AE%E4%BB%95%E4%BA%8B?pg="+num
-            datalist = getData(baseurl)
-            print(f"成功爬取 {len(datalist)} 条职位数据")
-        
-            savepath = "./求人ボックス_东京都中央区工作信息.xls"
-            saveData(datalist, savepath)
-        
-            print("爬取完毕！")
-        
-        except Exception as e:
-            print(f"程序执行出错: {e}")
-
-
 def getData(baseurl):
     datalist = []
     
@@ -212,74 +193,6 @@ def askURL(url):
         print(f"其他错误: {e}")
         return ""
 
-"""dame"""
-def saveData(datalist, savepath):
-    """保存数据到Excel"""
-    print("正在保存数据...")
-    try:
-        book = xlwt.Workbook(encoding="utf-8")
-        sheet = book.add_sheet('求人ボックス工作信息')
-        
-        # 设置列宽
-        widths = [8000, 6000, 5000, 4000, 4000, 10000, 3000, 3000, 5000, 4000, 3000]
-        for i, width in enumerate(widths):
-            sheet.col(i).width = width
-        
-        # 表头
-        headers = (
-            "职位标题", 
-            "职位链接", 
-            "公司名称", 
-            "工作地点", 
-            "薪资待遇", 
-            "职位描述", 
-            "职位类型", 
-            "发布时间", 
-            "职位特征", 
-            "所需技能",
-            "申请类型"
-        )
-        
-        # 表头样式
-        header_style = xlwt.easyxf(
-            'font: bold on; alignment: horizontal center, vertical center'
-        )
-        
-        for i, header in enumerate(headers):
-            sheet.write(0, i, header, header_style)
-        
-        # 数据样式 - 启用自动换行
-        data_style = xlwt.easyxf('alignment: wrap on, vertical top')
-        
-        # 写入数据
-        for i, data in enumerate(datalist):
-            for j, value in enumerate(data):
-                sheet.write(i+1, j, str(value), data_style)
-            
-            # 显示进度
-            if (i + 1) % 10 == 0:
-                print(f'已保存 {i + 1} 条记录')
-        
-        book.save(savepath)
-        print(f"数据已保存到: {savepath}")
-        print(f"总共保存了 {len(datalist)} 条职位信息")
-        
-    except Exception as e:
-        print(f"保存文件时出错: {e}")
-
-if __name__ == "__main__":
-     # 检查必要库是否已安装
-    try:
-        import xlrd
-        import xlwt
-        from xlutils.copy import copy
-    except ImportError:
-        print("缺少必要的库，请安装：")
-        print("pip install xlrd xlwt xlutils")
-        exit(1)
-    # 运行主程序
-    main()
-    
 def crawl_job_data(start_page, page_count, save_path, append_mode=False):
     """
     爬取求人ボックス网站的工作信息
@@ -290,6 +203,7 @@ def crawl_job_data(start_page, page_count, save_path, append_mode=False):
     save_path (str): Excel文件存储路径
     append_mode (bool): 是否在已有文件基础上追加数据（True=追加，False=覆盖）
     调用函数：read_existing_excel，saveData
+    待改进：目前需要删除爬取到的第一组元素，因为是无效信息
     """
     
     # 参数验证
@@ -408,16 +322,22 @@ def saveData(datalist, savepath, append_mode=False):
                 "职位描述", "职位类型", "发布时间", "职位特征", "所需技能", "申请类型"
             )
             
+            # 表头样式
             header_style = xlwt.easyxf('font: bold on; alignment: horizontal center, vertical center')
+            
             for i, header in enumerate(headers):
                 sheet.write(0, i, header, header_style)
         
-        # 数据样式
+        # 数据样式 - 启用自动换行
         data_style = xlwt.easyxf('alignment: wrap on, vertical top')
         
         # 写入数据
         for i, data in enumerate(datalist):
             current_row = start_row + i
+            if current_row == 0:
+                current_row = current_row + 1
+                #我也不清楚是什么bug，反正就是一开始填写会重复填写两次第0行，
+                # 接着之前的填就不会有这个问题
             for j, value in enumerate(data):
                 sheet.write(current_row, j, str(value), data_style)
             
@@ -431,3 +351,62 @@ def saveData(datalist, savepath, append_mode=False):
     except Exception as e:
         print(f"保存文件时出错: {e}")
         raise
+
+
+def main():
+    while True:
+        try:
+            print("=== 求人ボックス爬虫程序 ===")
+            start_page = int(input("请输入起始页数: "))
+            page_count = int(input("请输入要爬取的页数: "))
+            save_path = input("请输入保存路径（例如: ./工作信息.xls）: ").strip()
+            
+            # 检查文件是否已存在，询问是否追加
+            append_mode = False
+            # append_mode 是 用于文件操作的模式之一，允许将新内容追加到现有文件的末尾，而不会覆盖原有内容。
+            if os.path.exists(save_path):
+                choice = input(f"文件 {save_path} 已存在，是否追加数据？(y/n): ").lower()
+                if choice == 'y' or choice == 'yes':
+                    append_mode = True
+                    print("将在现有文件基础上追加数据")
+                else:
+                    print("将覆盖现有文件")
+            
+            # 调用爬虫函数
+            success = crawl_job_data(
+                start_page=start_page,
+                page_count=page_count,
+                save_path=save_path,
+                append_mode=append_mode
+            )
+            
+            if success:
+                print("爬取任务完成！")
+            else:
+                print("爬取任务失败！")
+            
+            # 询问是否继续
+            continue_choice = input("是否继续爬取？(y/n): ").lower()
+            if continue_choice != 'y' and continue_choice != 'yes':
+                print("程序结束")
+                break
+                
+        except ValueError:
+            print("错误：请输入有效的数字")
+        except Exception as e:
+            print(f"程序执行出错: {e}")
+
+
+if __name__ == "__main__":
+     # 检查必要库是否已安装
+    # try:
+        # import xlrd
+        # import xlwt
+        # from xlutils.copy import copy
+    # except ImportError:
+        # print("缺少必要的库，请安装：")
+        # print("pip install xlrd xlwt xlutils")
+        # exit(1)
+    # 运行主程序
+    main()
+    
