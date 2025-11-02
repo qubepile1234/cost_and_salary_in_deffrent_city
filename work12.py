@@ -309,7 +309,6 @@ def saveData(datalist, savepath, append_mode=False):
             # 覆盖模式：创建新文件
             workbook_w = xlwt.Workbook(encoding="utf-8")
             sheet = workbook_w.add_sheet('求人ボックス工作信息')
-            start_row = 0
             
             # 设置列宽
             widths = [8000, 6000, 5000, 4000, 4000, 10000, 3000, 3000, 5000, 4000, 3000]
@@ -327,6 +326,8 @@ def saveData(datalist, savepath, append_mode=False):
             
             for i, header in enumerate(headers):
                 sheet.write(0, i, header, header_style)
+            start_row = 1
+        
         
         # 数据样式 - 启用自动换行
         data_style = xlwt.easyxf('alignment: wrap on, vertical top')
@@ -334,10 +335,7 @@ def saveData(datalist, savepath, append_mode=False):
         # 写入数据
         for i, data in enumerate(datalist):
             current_row = start_row + i
-            if current_row == 0:
-                current_row = current_row + 1
-                #我也不清楚是什么bug，反正就是一开始填写会重复填写两次第0行，
-                # 接着之前的填就不会有这个问题
+            
             for j, value in enumerate(data):
                 sheet.write(current_row, j, str(value), data_style)
             
@@ -398,15 +396,5 @@ def main():
 
 
 if __name__ == "__main__":
-     # 检查必要库是否已安装
-    # try:
-        # import xlrd
-        # import xlwt
-        # from xlutils.copy import copy
-    # except ImportError:
-        # print("缺少必要的库，请安装：")
-        # print("pip install xlrd xlwt xlutils")
-        # exit(1)
-    # 运行主程序
     main()
     

@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 from bs4 import BeautifulSoup
 import re
-import csv  # 替换 xlwt, xlrd, xlutils
 import requests
 import os
 import time
+import filter #本地资源
+import csv_rw #本地资源
+import crawl_2_1
 # 删除 xlwt, xlrd, xlutils 的导入
 
 
@@ -26,9 +28,16 @@ def getData(baseurl):
     for item in job_items:
         data = parse_job_item(item)
         if data:
-            datalist.append(data)
-            print(f"已解析: {data[0]} - {data[2]}")
-    
+            print(f"解析到数据: {data}")
+            try:
+                datalist.append(data)
+            except Exception as e:
+                print(f"添加数据时出错: data={data},datalist={datalist} 错误: {e}")
+            #####################################
+            try:
+                print(f"已解析: {data['职位标题']} - {data['公司名称']}")
+            except Exception as e:
+                print(f"已解析: 无法显示职位标题和公司名称，错误: {e}")
     return datalist
 
 def parse_job_item(item):
@@ -51,13 +60,10 @@ def parse_job_item(item):
             job_title = "未找到职位标题"
             job_link = ""
         
-        data.append(job_title)
-        data.append(job_link)
         
         # 2. 公司名称
         company = item.find('p', class_="p-result_company")
         company_name = company.get_text(strip=True) if company else "未找到公司名称"
-        data.append(company_name)
         
         # 3. 工作地点
         location_items = item.find_all('li', class_="c-icon c-icon-result p-result_icon p-result_area")
@@ -67,33 +73,28 @@ def parse_job_item(item):
             location = location.replace('&nbsp;', ' ')      # 1. 替换HTML实体&nbsp;为普通空格
             location = location.strip()                     # 2. 去除首尾空格
             location = re.sub(r'\s+', ' ', location)        # 3. 合并多个连续空格
-        data.append(location)
         
         # 4. 薪资信息
         salary_items = item.find_all('li', class_="c-icon c-icon-result p-result_icon p-result_pay")
         salary = "薪资面议"
         if salary_items:
             salary = salary_items[0].get_text(strip=True)
-        data.append(salary)
         
         # 5. 职位描述
         description = item.find('p', class_="p-result_lines")
         desc_text = description.get_text(strip=True) if description else "暂无描述"
         # 清理描述文本
         desc_text = re.sub(r'\s+', ' ', desc_text)
-        data.append(desc_text)
         
         # 6. 职位类型
         employ_type_items = item.find_all('li', class_="c-icon c-icon-result p-result_icon p-result_employType")
         job_type = "未指定"
         if employ_type_items:
             job_type = employ_type_items[0].get_text(strip=True)
-        data.append(job_type)
         
         # 7. 发布时间
         date_info = item.find('p', class_="p-result_updatedAt_hyphen")
         post_date = date_info.get_text(strip=True) if date_info else "未知"
-        data.append(post_date)
         
         # 8. 职位特征标签
         feature_tags = item.find_all('li', class_="p-result_tag_feature--ver2")
@@ -101,19 +102,37 @@ def parse_job_item(item):
         for tag in feature_tags:
             features.append(tag.get_text(strip=True))
         features_text = ', '.join(features) if features else "无特殊标签"
-        data.append(features_text)
         
         # 9. 所需技能（从描述和标签中提取）
         all_text = desc_text + " " + features_text + " " + job_title
         technologies = extract_technologies(all_text)
-        data.append(technologies)
         
         # 10. 申请类型（かんたん応募等）
         apply_type = "通常申请"
         easy_apply = item.find('span', class_="p-result_easyApp")
         if easy_apply:
             apply_type = "かんたん応募"
-        data.append(apply_type)
+        # 11.工作详情页爬取
+        print(f"正在获取详情: {job_title}")
+        job_details = crawl_2_1.get_job_details(job_link)
+        data={'职位标题': job_title,
+                '职位链接': job_link,
+                '公司名称': company_name,
+                '工作地点': location,
+                '薪资待遇': salary,
+                '职位描述': desc_text,
+                '职位类型': job_type,
+                '发布时间': post_date,
+                '职位特征': features_text,
+                '所需技能': technologies,
+                '申请类型': apply_type,
+                #####################################
+                '勤務時間・休日': job_details['勤務時間・休日'],
+                '仕事内容': job_details['仕事内容'],
+                '給与・報酬': job_details['給与・報酬'],
+                '雇用形態': job_details['雇用形態'],
+                '勤務地・交通': job_details['勤務地・交通'],
+                }
         
         return data
         
@@ -173,6 +192,7 @@ def askURL(url):
         "Referer": "https://xn--pckua2a7gp15o89zb.com/",
         "Upgrade-Insecure-Requests": "1"
     }
+    #用不同浏览器会得到不同回答,chrome是25个1page,edge在25个之后还多了两个div,每个div2个,一共29个
     
     try:
         # 使用requests库，它自动处理编码问题
@@ -202,7 +222,7 @@ def crawl_job_data(start_page, page_count, save_path, append_mode=False):
     save_path (str): 文件存储路径
     append_mode (bool): 是否在已有文件基础上追加数据（True=追加，False=覆盖）
     调用函数：read_existing_csv，saveData
-    待改进：目前需要删除爬取到的第一组元素，因为是无效信息
+    待改进：目前需要删除爬取到的第一组元素，因为是无效信息,(不知道怎么又没有这个无效信息了
     """
     
     # 参数验证
@@ -221,7 +241,7 @@ def crawl_job_data(start_page, page_count, save_path, append_mode=False):
     if append_mode and os.path.exists(save_path):
         try:
             print(f"检测到已有文件 {save_path}，正在读取现有数据...")
-            existing_data = read_existing_csv(save_path)
+            existing_data = csv_rw.read_existing_csv(save_path)
             print(f"已读取 {len(existing_data)} 条现有数据")
         except Exception as e:
             print(f"读取现有文件失败: {e}，将创建新文件")
@@ -247,6 +267,8 @@ def crawl_job_data(start_page, page_count, save_path, append_mode=False):
         
         # 添加延迟，避免请求过快
         time.sleep(1)
+    # 筛选薪资数据，过滤掉薪资面议的工作信息,可添加功能
+        all_data = filter.filter_datalist(all_data)
     
     # 合并数据（如果是追加模式）
     if append_mode and existing_data:
@@ -258,7 +280,7 @@ def crawl_job_data(start_page, page_count, save_path, append_mode=False):
     # 保存数据
     if final_data:
         try:
-            saveData(final_data, save_path, append_mode and os.path.exists(save_path))
+            csv_rw.saveData(final_data, save_path, append_mode and os.path.exists(save_path))
             print(f"数据保存成功！总计 {len(final_data)} 条数据已保存到 {save_path}")
             return True
         except Exception as e:
@@ -267,54 +289,6 @@ def crawl_job_data(start_page, page_count, save_path, append_mode=False):
     else:
         print("没有数据需要保存")
         return False
-
-def read_existing_csv(file_path):
-    """读取现有的CSV文件数据"""
-    try:
-        data = []
-        with open(file_path, 'r', encoding='utf-8-sig', newline='') as f:
-            reader = csv.reader(f)
-            # 跳过表头
-            next(reader, None)
-            # 读取所有数据行
-            for row in reader:
-                data.append(row)
-        return data
-    except Exception as e:
-        print(f"读取CSV文件失败: {e}")
-        return []
-
-def saveData(datalist, savepath, append_mode=False):
-    """保存数据到CSV，支持追加模式"""
-    print("正在保存数据...")
-    try:
-        # CSV写入模式：追加模式用 'a'，覆盖模式用 'w'
-        mode = 'a' if append_mode else 'w'
-        
-        with open(savepath, mode, encoding='utf-8-sig', newline='') as f:
-            writer = csv.writer(f)
-            
-            # 如果是覆盖模式，写入表头
-            if not append_mode:
-                headers = (
-                    "职位标题", "职位链接", "公司名称", "工作地点", "薪资待遇", 
-                    "职位描述", "职位类型", "发布时间", "职位特征", "所需技能", "申请类型"
-                )
-                writer.writerow(headers)
-            
-            # 写入数据
-            for i, data in enumerate(datalist):
-                writer.writerow(data)
-                
-                # 显示进度
-                if (i + 1) % 10 == 0:
-                    print(f'已保存 {i + 1} 条记录')
-        
-        print(f"数据已保存到: {savepath}")
-        
-    except Exception as e:
-        print(f"保存文件时出错: {e}")
-        raise
 
 
 def main():
